@@ -1,6 +1,12 @@
 # LlamaGraph
 
-A visualizer for `llama-bench` results from llama.cpp.
+**llamagraph** is a desktop visualisation tool for benchmarking results produced by
+[llama-bench](https://github.com/ggml-org/llama.cpp/tree/master/tools/llama-bench)
+from the [llama.cpp](https://github.com/ggml-org/llama.cpp) project.
+
+It reads the CSV output files that `llama-bench` generates and plots prompt-processing
+(PP) and token-generation (TG) throughput — or latency — as interactive 2-D line
+charts or 3-D surface plots.  Multiple CSV files can be compared simultaneously.
 
 When you run an optimizer or do manual parameter sweeps with `llama-bench`, you usually end up with a bunch of numbers. Sometimes an optimizer even gives you a single “best” value.
 
