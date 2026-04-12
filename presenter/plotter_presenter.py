@@ -82,6 +82,7 @@ class PlotterPresenter:
         ls.set_series_toggle_callback(self._render_plot)
         ls.set_select_all_callback(self._on_select_all)
         ls.set_deselect_all_callback(self._on_deselect_all)
+        ls.set_choose_directory_callback(self._on_choose_directory)
 
         # Right sidebar (dimension filters)
         rs.set_filter_change_callback(self._on_filter_change)
@@ -103,6 +104,22 @@ class PlotterPresenter:
 
     # ── File management ───────────────────────────────────────────────────────
 
+    def _on_choose_directory(self, chosen_path) -> None:
+        """
+        Called when the user picks a directory via the Browse button.
+        Updates the working directory and rescans for CSV files.
+        """
+        self._start_dir = chosen_path
+        self._win.left_sidebar.set_directory_label(chosen_path)
+        # Clear current selection and model data before rescanning
+        self._current_selection = []
+        self._model.clear()
+        self._win.left_sidebar.update_series_toggles([])
+        self._win.plot_view.show_placeholder(
+            "📊 Select CSV file(s) with Ctrl+Click to display"
+        )
+        self.scan_files()
+
     def scan_files(self) -> None:
         """Scan *start_dir* for valid llama-bench CSV files and populate the list."""
         self._available_csvs = []
@@ -121,6 +138,7 @@ class PlotterPresenter:
 
         names = [f.name for f in self._available_csvs]
         self._win.left_sidebar.populate_file_list(names, sort_label)
+        self._win.left_sidebar.set_directory_label(self._start_dir)
 
     def _on_sort(self) -> None:
         self._sort_by_time = not self._sort_by_time

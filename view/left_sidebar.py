@@ -4,6 +4,7 @@ view/left_sidebar.py
 Left sidebar View component for llamagraph.
 
 Displays:
+  - Current working directory label
   - File list (Listbox with multi-select)
   - Sort / Refresh buttons
   - Per-series PP/TG checkboxes (rebuilt whenever selection changes)
@@ -18,7 +19,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog
 
 from utils.colors import COLORS, get_variant_color, DEFAULT_PP_COLOR, DEFAULT_TG_COLOR
 
@@ -30,15 +31,17 @@ class LeftSidebar(tk.Frame):
     Public methods called by the Presenter:
       populate_file_list(names, sort_label)
       update_series_toggles(dataset_paths)
+      set_directory_label(path)
       get_pp_flag(i) / get_tg_flag(i)
 
     Callbacks set by the Presenter:
-      set_file_select_callback(cb)      – cb(selected_indices: list[int])
-      set_sort_callback(cb)             – cb()
-      set_refresh_callback(cb)          – cb()
-      set_series_toggle_callback(cb)    – cb()  (any toggle changed)
-      set_select_all_callback(cb)       – cb()
-      set_deselect_all_callback(cb)     – cb()
+      set_file_select_callback(cb)        – cb(selected_indices: list[int])
+      set_sort_callback(cb)               – cb()
+      set_refresh_callback(cb)            – cb()
+      set_series_toggle_callback(cb)      – cb()  (any toggle changed)
+      set_select_all_callback(cb)         – cb()
+      set_deselect_all_callback(cb)       – cb()
+      set_choose_directory_callback(cb)   – cb(chosen_path: Path)
     """
 
     def __init__(self, parent: tk.Widget, pp_color: str = DEFAULT_PP_COLOR,
@@ -58,15 +61,40 @@ class LeftSidebar(tk.Frame):
         self._series_toggle_cb: Optional[Callable] = None
         self._select_all_cb: Optional[Callable] = None
         self._deselect_all_cb: Optional[Callable] = None
+        self._choose_directory_cb: Optional[Callable[[Path], None]] = None
 
         self._build_ui()
 
     # ── UI construction ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        # Header
-        tk.Label(self, text="📁 CSV Files", bg=COLORS['bg'], fg=COLORS['fg'],
-                 font=('Segoe UI', 10, 'bold')).pack(pady=(10, 5))
+        # Header row: title + Browse button on the right
+        header_row = tk.Frame(self, bg=COLORS['bg'])
+        header_row.pack(fill=tk.X, padx=5, pady=(10, 2))
+
+        tk.Label(header_row, text="📁 CSV Files", bg=COLORS['bg'], fg=COLORS['fg'],
+                 font=('Segoe UI', 10, 'bold')).pack(side=tk.LEFT)
+
+        tk.Button(
+            header_row, text="📂 Browse…",
+            command=self._on_choose_directory,
+            bg='#3a3a3a', fg=COLORS['fg'],
+            relief=tk.FLAT, cursor='hand2',
+            font=('Segoe UI', 8),
+            activebackground=COLORS['accent'], activeforeground='white',
+        ).pack(side=tk.RIGHT)
+
+        # Current directory label (truncated, right-to-left ellipsis)
+        self._dir_label = tk.Label(
+            self,
+            text="",
+            bg=COLORS['bg'],
+            fg='#888888',
+            font=('Consolas', 7),
+            anchor='w',
+            justify='left',
+        )
+        self._dir_label.pack(fill=tk.X, padx=6, pady=(0, 4))
 
         # Select All / Deselect All
         btn_row = tk.Frame(self, bg=COLORS['bg'])
@@ -137,6 +165,16 @@ class LeftSidebar(tk.Frame):
         for name in names:
             self._file_list.insert(tk.END, name)
         self._sort_btn.config(text=sort_label)
+
+    def set_directory_label(self, path) -> None:
+        """
+        Update the directory path label below the header.
+        Truncates long paths from the left so the folder name tail is visible.
+        """
+        text = str(path)
+        if len(text) > 42:
+            text = "\u2026" + text[-41:]
+        self._dir_label.config(text=text)
 
     def get_selected_indices(self) -> list[int]:
         return list(self._file_list.curselection())
@@ -226,6 +264,10 @@ class LeftSidebar(tk.Frame):
     def set_deselect_all_callback(self, cb: Callable[[], None]) -> None:
         self._deselect_all_cb = cb
 
+    def set_choose_directory_callback(self, cb) -> None:
+        """Register callback called with the chosen Path when user picks a dir."""
+        self._choose_directory_cb = cb
+
     # ── Internal event handlers ───────────────────────────────────────────────
 
     def _on_listbox_select(self, _event) -> None:
@@ -255,3 +297,9 @@ class LeftSidebar(tk.Frame):
             self._deselect_all_cb()
         else:
             self.deselect_all()
+
+    def _on_choose_directory(self) -> None:
+        """Open a native directory chooser; fire callback with the chosen Path."""
+        chosen = filedialog.askdirectory(title="Select CSV directory")
+        if chosen and self._choose_directory_cb:
+            self._choose_directory_cb(Path(chosen))

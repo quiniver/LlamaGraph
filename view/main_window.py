@@ -80,9 +80,9 @@ class MainWindow:
 
     def _configure_root(self) -> None:
         self._root.title("llamagraph — llama-bench Visualizer")
-        self._root.geometry("1560x900")
+        self._root.geometry("1680x900")
         self._root.configure(bg=COLORS['bg'])
-        self._root.minsize(1100, 650)
+        self._root.minsize(1200, 650)
         # Style Combobox dropdowns dark
         self._root.option_add('*TCombobox*Listbox.background', '#2d2d2d')
         self._root.option_add('*TCombobox*Listbox.foreground', COLORS['fg'])
@@ -94,7 +94,7 @@ class MainWindow:
 
         # Left sidebar
         self.left_sidebar = LeftSidebar(self._paned, pp_color=self._pp_color,
-                                        tg_color=self._tg_color, width=500)
+                                        tg_color=self._tg_color, width=480)
         self._paned.add(self.left_sidebar, weight=0)
 
         # Center pane: toolbars above, plot canvas below
