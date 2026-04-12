@@ -1,0 +1,257 @@
+"""
+view/left_sidebar.py
+
+Left sidebar View component for llamagraph.
+
+Displays:
+  - File list (Listbox with multi-select)
+  - Sort / Refresh buttons
+  - Per-series PP/TG checkboxes (rebuilt whenever selection changes)
+
+This class is purely UI — it only fires callbacks to the Presenter.
+It never calls the Model directly.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Callable, Optional
+
+import tkinter as tk
+from tkinter import ttk
+
+from utils.colors import COLORS, get_variant_color, DEFAULT_PP_COLOR, DEFAULT_TG_COLOR
+
+
+class LeftSidebar(tk.Frame):
+    """
+    Left sidebar containing the CSV file list and per-series toggles.
+
+    Public methods called by the Presenter:
+      populate_file_list(names, sort_label)
+      update_series_toggles(dataset_paths)
+      get_pp_flag(i) / get_tg_flag(i)
+
+    Callbacks set by the Presenter:
+      set_file_select_callback(cb)      – cb(selected_indices: list[int])
+      set_sort_callback(cb)             – cb()
+      set_refresh_callback(cb)          – cb()
+      set_series_toggle_callback(cb)    – cb()  (any toggle changed)
+      set_select_all_callback(cb)       – cb()
+      set_deselect_all_callback(cb)     – cb()
+    """
+
+    def __init__(self, parent: tk.Widget, pp_color: str = DEFAULT_PP_COLOR,
+                 tg_color: str = DEFAULT_TG_COLOR, **kwargs) -> None:
+        super().__init__(parent, bg=COLORS['bg'], **kwargs)
+        self._pp_color = pp_color
+        self._tg_color = tg_color
+
+        # Per-series toggle variables {idx: tk.IntVar}
+        self._pp_vars: dict[int, tk.IntVar] = {}
+        self._tg_vars: dict[int, tk.IntVar] = {}
+
+        # Callbacks (injected by Presenter)
+        self._file_select_cb: Optional[Callable] = None
+        self._sort_cb: Optional[Callable] = None
+        self._refresh_cb: Optional[Callable] = None
+        self._series_toggle_cb: Optional[Callable] = None
+        self._select_all_cb: Optional[Callable] = None
+        self._deselect_all_cb: Optional[Callable] = None
+
+        self._build_ui()
+
+    # ── UI construction ───────────────────────────────────────────────────────
+
+    def _build_ui(self) -> None:
+        # Header
+        tk.Label(self, text="📁 CSV Files", bg=COLORS['bg'], fg=COLORS['fg'],
+                 font=('Segoe UI', 10, 'bold')).pack(pady=(10, 5))
+
+        # Select All / Deselect All
+        btn_row = tk.Frame(self, bg=COLORS['bg'])
+        btn_row.pack(fill=tk.X, padx=5)
+        tk.Button(btn_row, text="Select All",
+                  command=self._on_select_all,
+                  bg=COLORS['accent'], fg='white', relief=tk.FLAT,
+                  cursor='hand2', font=('Segoe UI', 8)
+                  ).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=1)
+        tk.Button(btn_row, text="Deselect All",
+                  command=self._on_deselect_all,
+                  bg='#444', fg='white', relief=tk.FLAT,
+                  cursor='hand2', font=('Segoe UI', 8)
+                  ).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=1)
+
+        # File Listbox with scrollbar
+        list_frame = tk.Frame(self, bg=COLORS['bg'])
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        scrollbar = ttk.Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self._file_list = tk.Listbox(
+            list_frame, bg='#2d2d2d', fg=COLORS['fg'],
+            selectbackground=COLORS['accent'], selectforeground='white',
+            activestyle='none', font=('Consolas', 9),
+            yscrollcommand=scrollbar.set,
+            selectmode=tk.MULTIPLE, exportselection=0,
+        )
+        self._file_list.pack(fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self._file_list.yview)
+        self._file_list.bind('<<ListboxSelect>>', self._on_listbox_select)
+
+        # Series-toggle area (populated dynamically)
+        self._series_header = tk.Label(
+            self, text="🎛 Series Toggles",
+            bg=COLORS['bg'], fg=COLORS['fg'],
+            font=('Segoe UI', 9, 'bold'),
+        )
+        self._series_header.pack(anchor='w', padx=7, pady=(4, 0))
+
+        self._series_frame = tk.Frame(self, bg=COLORS['bg'])
+        self._series_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
+
+        # Sort / Refresh buttons
+        btn_bottom = tk.Frame(self, bg=COLORS['bg'])
+        btn_bottom.pack(fill=tk.X, padx=5, pady=(0, 8))
+
+        self._sort_btn = tk.Button(
+            btn_bottom, text="Sort: Time ↓",
+            command=self._on_sort,
+            bg=COLORS['accent'], fg='white', relief=tk.FLAT,
+            cursor='hand2', font=('Segoe UI', 9),
+        )
+        self._sort_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
+
+        tk.Button(
+            btn_bottom, text="Refresh",
+            command=self._on_refresh,
+            bg=COLORS['accent'], fg='white', relief=tk.FLAT,
+            cursor='hand2', font=('Segoe UI', 9),
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
+
+    # ── Public API (called by Presenter) ─────────────────────────────────────
+
+    def populate_file_list(self, names: list[str], sort_label: str) -> None:
+        """Rebuild the file listbox with *names* and update the sort button."""
+        self._file_list.delete(0, tk.END)
+        for name in names:
+            self._file_list.insert(tk.END, name)
+        self._sort_btn.config(text=sort_label)
+
+    def get_selected_indices(self) -> list[int]:
+        return list(self._file_list.curselection())
+
+    def select_all(self) -> None:
+        self._file_list.selection_set(0, tk.END)
+        self._on_listbox_select(None)
+
+    def deselect_all(self) -> None:
+        self._file_list.selection_clear(0, tk.END)
+        self._on_listbox_select(None)
+
+    def update_series_toggles(self, dataset_paths: list[Path]) -> None:
+        """
+        Rebuild the per-series PP/TG checkboxes.
+        Called by the Presenter after the dataset selection changes.
+        """
+        # Tear down old widgets
+        for widget in self._series_frame.winfo_children():
+            widget.destroy()
+        self._pp_vars.clear()
+        self._tg_vars.clear()
+
+        for i, path in enumerate(dataset_paths):
+            stem = Path(path).stem[:16]
+            pp_var = tk.IntVar(value=1)
+            tg_var = tk.IntVar(value=1)
+            self._pp_vars[i] = pp_var
+            self._tg_vars[i] = tg_var
+
+            pp_color = get_variant_color(self._pp_color, i)
+            tg_color = get_variant_color(self._tg_color, i)
+
+            tk.Checkbutton(
+                self._series_frame,
+                text=f"PP  {stem}",
+                variable=pp_var,
+                command=self._on_series_toggle,
+                bg=COLORS['bg'], fg=pp_color,
+                selectcolor=COLORS['checkbox_active'],
+                font=('Segoe UI', 8),
+            ).pack(anchor='w', padx=5)
+
+            tk.Checkbutton(
+                self._series_frame,
+                text=f"TG  {stem}",
+                variable=tg_var,
+                command=self._on_series_toggle,
+                bg=COLORS['bg'], fg=tg_color,
+                selectcolor=COLORS['checkbox_active'],
+                font=('Segoe UI', 8),
+            ).pack(anchor='w', padx=5)
+
+            if i < len(dataset_paths) - 1:
+                tk.Frame(self._series_frame, bg='#444', height=1).pack(
+                    fill='x', pady=3
+                )
+
+    def get_pp_flag(self, i: int) -> bool:
+        var = self._pp_vars.get(i)
+        return bool(var.get()) if var else True
+
+    def get_tg_flag(self, i: int) -> bool:
+        var = self._tg_vars.get(i)
+        return bool(var.get()) if var else True
+
+    def get_series_count(self) -> int:
+        return len(self._pp_vars)
+
+    # ── Callback registration (called by Presenter) ───────────────────────────
+
+    def set_file_select_callback(self, cb: Callable[[list[int]], None]) -> None:
+        self._file_select_cb = cb
+
+    def set_sort_callback(self, cb: Callable[[], None]) -> None:
+        self._sort_cb = cb
+
+    def set_refresh_callback(self, cb: Callable[[], None]) -> None:
+        self._refresh_cb = cb
+
+    def set_series_toggle_callback(self, cb: Callable[[], None]) -> None:
+        self._series_toggle_cb = cb
+
+    def set_select_all_callback(self, cb: Callable[[], None]) -> None:
+        self._select_all_cb = cb
+
+    def set_deselect_all_callback(self, cb: Callable[[], None]) -> None:
+        self._deselect_all_cb = cb
+
+    # ── Internal event handlers ───────────────────────────────────────────────
+
+    def _on_listbox_select(self, _event) -> None:
+        if self._file_select_cb:
+            self._file_select_cb(list(self._file_list.curselection()))
+
+    def _on_sort(self) -> None:
+        if self._sort_cb:
+            self._sort_cb()
+
+    def _on_refresh(self) -> None:
+        if self._refresh_cb:
+            self._refresh_cb()
+
+    def _on_series_toggle(self) -> None:
+        if self._series_toggle_cb:
+            self._series_toggle_cb()
+
+    def _on_select_all(self) -> None:
+        if self._select_all_cb:
+            self._select_all_cb()
+        else:
+            self.select_all()
+
+    def _on_deselect_all(self) -> None:
+        if self._deselect_all_cb:
+            self._deselect_all_cb()
+        else:
+            self.deselect_all()
