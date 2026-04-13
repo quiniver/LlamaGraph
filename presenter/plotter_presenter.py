@@ -27,7 +27,7 @@ from view.plot_view import render_2d, render_3d
 
 class PlotterPresenter:
     """
-    Wires Model ↔ View and drives all application logic.
+    Wires Model - View and drives all application logic.
 
     Lifecycle:
       1. __init__ receives a configured MainWindow and a search directory.
@@ -42,6 +42,7 @@ class PlotterPresenter:
         pp_color: str = DEFAULT_PP_COLOR,
         tg_color: str = DEFAULT_TG_COLOR,
         default_ts: bool = True,
+        initial_selection_file: Optional[Path] = None,
     ) -> None:
         self._win = window
         self._model = BenchmarkModel()
@@ -53,20 +54,32 @@ class PlotterPresenter:
         self._show_ts: bool = default_ts          # True = tokens/s, False = ns
         self._sort_by_time: bool = True           # True = mtime desc, False = name
         self._available_csvs: list[Path] = []     # All valid CSV paths in dir
-        self._current_selection: list[int] = []  # Currently selected indices
+        self._current_selection: list[int] = []   # Currently selected indices
 
         # 3-D camera persistence
         self._cam_3d: Optional[dict] = None
-        self._home_cam_3d: Optional[dict] = None  # Recorded at first render
-        self._current_3d_ax = None                # Live Axes3D reference
-        self._last_3d_signature: Optional[tuple] = None  # Detect axis change
+        self._home_cam_3d: Optional[dict] = None
+        self._current_3d_ax = None
+        self._last_3d_signature: Optional[tuple] = None
 
         # Connect everything
         self._wire_callbacks()
         self.scan_files()
         self._update_metric_button()
 
-    # ── Wiring ────────────────────────────────────────────────────────────────
+        # Handle initial file selection from CLI
+        if initial_selection_file:
+            self._handle_initial_selection(initial_selection_file)
+
+    def _handle_initial_selection(self, file_path: Path) -> None:
+        """Finds the index of the provided file and selects it."""
+        try:
+            idx = self._available_csvs.index(file_path)
+            self._win.left_sidebar.select_index(idx)
+            self._on_file_select([idx])
+        except ValueError:
+            # File not in the scanned list, ignore silently as requested
+            pass
 
     def _wire_callbacks(self) -> None:
         """Inject all callback references into View components."""
@@ -313,14 +326,10 @@ class PlotterPresenter:
 
         ls = self._win.left_sidebar
         n = self._model.get_dataset_count()
-        show_pp_flags = [
-            ls.get_pp_flag(i) and show_pp for i in range(n)
-        ]
-        show_tg_flags = [
-            ls.get_tg_flag(i) and show_tg for i in range(n)
-        ]
+        show_pp_flags = [ls.get_pp_flag(i) and show_pp for i in range(n)]
+        show_tg_flags = [ls.get_tg_flag(i) and show_tg for i in range(n)]
 
-        # Pull aggregated data from model
+        # Pull aggregated data from model based on current filters and axis choices
         series_data = self._model.get_2d_series(
             x_dim=x_param,
             show_ts=self._show_ts,

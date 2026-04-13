@@ -86,13 +86,8 @@ class LeftSidebar(tk.Frame):
 
         # Current directory label (truncated, right-to-left ellipsis)
         self._dir_label = tk.Label(
-            self,
-            text="",
-            bg=COLORS['bg'],
-            fg='#888888',
-            font=('Consolas', 7),
-            anchor='w',
-            justify='left',
+            self, text="", bg=COLORS['bg'], fg='#888888',
+            font=('Consolas', 7), anchor='w', justify='left',
         )
         self._dir_label.pack(fill=tk.X, padx=6, pady=(0, 4))
 
@@ -179,6 +174,11 @@ class LeftSidebar(tk.Frame):
     def get_selected_indices(self) -> list[int]:
         return list(self._file_list.curselection())
 
+    def select_index(self, idx: int) -> None:
+        """Programmatically select a specific index in the listbox."""
+        self._file_list.selection_set(idx)
+        self._file_list.see(idx)
+
     def select_all(self) -> None:
         self._file_list.selection_set(0, tk.END)
         self._on_listbox_select(None)
@@ -209,23 +209,17 @@ class LeftSidebar(tk.Frame):
             tg_color = get_variant_color(self._tg_color, i)
 
             tk.Checkbutton(
-                self._series_frame,
-                text=f"PP  {stem}",
-                variable=pp_var,
-                command=self._on_series_toggle,
+                self._series_frame, text=f"PP  {stem}",
+                variable=pp_var, command=self._on_series_toggle,
                 bg=COLORS['bg'], fg=pp_color,
-                selectcolor=COLORS['checkbox_active'],
-                font=('Segoe UI', 8),
+                selectcolor=COLORS['checkbox_active'], font=('Segoe UI', 8),
             ).pack(anchor='w', padx=5)
 
             tk.Checkbutton(
-                self._series_frame,
-                text=f"TG  {stem}",
-                variable=tg_var,
-                command=self._on_series_toggle,
+                self._series_frame, text=f"TG  {stem}",
+                variable=tg_var, command=self._on_series_toggle,
                 bg=COLORS['bg'], fg=tg_color,
-                selectcolor=COLORS['checkbox_active'],
-                font=('Segoe UI', 8),
+                selectcolor=COLORS['checkbox_active'], font=('Segoe UI', 8),
             ).pack(anchor='w', padx=5)
 
             if i < len(dataset_paths) - 1:
@@ -240,10 +234,7 @@ class LeftSidebar(tk.Frame):
     def get_tg_flag(self, i: int) -> bool:
         var = self._tg_vars.get(i)
         return bool(var.get()) if var else True
-
-    def get_series_count(self) -> int:
-        return len(self._pp_vars)
-
+    
     # ── Callback registration (called by Presenter) ───────────────────────────
 
     def set_file_select_callback(self, cb: Callable[[list[int]], None]) -> None:
