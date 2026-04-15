@@ -21,4 +21,5 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Run tests with pytest
         run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
           pytest --cov=utils --cov-report=term-missing
