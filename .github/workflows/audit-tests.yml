@@ -1,13 +1,12 @@
-name: Test Suite
+name: Test Audit Pipeline
+
 on:
   push:
     branches: [ tests ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  test:
+  audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,10 +17,8 @@ jobs:
           cache: 'pip'
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest pytest-cov
-      - name: Run tests with pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Run tests with coverage
         run: |
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
           pytest --cov=. --cov-report=term-missing
