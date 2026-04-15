@@ -3,4 +3,5 @@ pytest-cov
 matplotlib
 numpy
 pandas
-tkinter
+# tkinter is usually pre-installed on ubuntu-latest, but if not, it's in the system packages. 
+# We won't add it to requirements.txt to avoid pip install issues for a system package.
