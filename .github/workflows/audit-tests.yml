@@ -8,17 +8,22 @@ on:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
+      
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           cache: 'pip'
+      
       - name: Install dependencies
         run: |
           pip install pytest pytest-cov
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      
       - name: Run tests with coverage
         run: |
-          pytest --cov=. --cov-report=term-missing
+          pytest --cov=. --cov-report=term-missing --cov-report=xml --verbose
