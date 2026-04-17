@@ -10,9 +10,6 @@ import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-# Import only the parse_args function which doesn't require GUI
-import llamagraph
-
 
 class TestParseArgs:
     """Test CLI argument parsing."""
@@ -97,49 +94,52 @@ class TestParseArgs:
 class TestMainLogic:
     """Test main() logic up to GUI instantiation."""
     
-    @pytest.fixture
-    def mock_is_llama_bench_csv(self):
-        """Mock the CSV validation function."""
-        with patch('llamagraph.is_llama_bench_csv') as mock_func:
-            yield mock_func
+    @pytest.fixture(autouse=True)
+    def setup_mocks(self):
+        """Set up mocks before each test to prevent Tkinter imports."""
+        # Mock tkinter BEFORE importing llamagraph
+        self.tk_mock = MagicMock()
+        self.csv_parser_mock = MagicMock()
+        self.main_window_mock = MagicMock()
+        self.presenter_mock = MagicMock()
+        
+        # Create patchers
+        self.patch_tk = patch('llamagraph.tk', self.tk_mock)
+        self.patch_csv = patch('llamagraph.is_llama_bench_csv', self.csv_parser_mock)
+        self.patch_window = patch('llamagraph.MainWindow', self.main_window_mock)
+        self.patch_presenter = patch('llamagraph.PlotterPresenter', self.presenter_mock)
+        
+        # Start patches
+        self.patch_tk.start()
+        self.patch_csv.start()
+        self.patch_window.start()
+        self.patch_presenter.start()
+        
+        # Now safe to import (tkinter is mocked)
+        import llamagraph
+        self.llamagraph_module = llamagraph
+        
+        yield
+        
+        # Stop patches
+        self.patch_tk.stop()
+        self.patch_csv.stop()
+        self.patch_window.stop()
+        self.patch_presenter.stop()
     
-    @pytest.fixture
-    def mock_tk(self):
-        """Mock Tkinter to prevent GUI creation."""
-        with patch('llamagraph.tk') as mock_tk_module:
-            mock_root = MagicMock()
-            mock_tk.Tk.return_value = mock_root
-            yield mock_tk_module, mock_root
-    
-    @pytest.fixture
-    def mock_presenter(self):
-        """Mock the PlotterPresenter to prevent full initialization."""
-        with patch('llamagraph.PlotterPresenter') as mock_presenter:
-            yield mock_presenter
-    
-    @pytest.fixture
-    def mock_main_window(self):
-        """Mock MainWindow creation."""
-        with patch('llamagraph.MainWindow') as mock_window:
-            mock_win_instance = MagicMock()
-            mock_window.return_value = mock_win_instance
-            yield mock_window, mock_win_instance
-    
-    def test_file_path_logic(self, mock_is_llama_bench_csv, mock_tk, 
-                            mock_presenter, mock_main_window):
+    def test_file_path_logic(self):
         """When a file path is provided, start_dir is parent and initial_file is set."""
         test_file = Path('/benchmarks/run1.csv')
         
         # Mock CSV validation to return True
-        mock_is_llama_bench_csv.return_value = True
+        self.csv_parser_mock.return_value = True
         
         with patch('sys.argv', ['llamagraph.py', str(test_file)]):
             with patch.object(sys, 'exit'):
-                llamagraph.main()
+                self.llamagraph_module.main()
                 
                 # Verify logic: start_dir should be parent
-                # This is tested by checking what's passed to PlotterPresenter
-                call_kwargs = mock_presenter.call_args
+                call_kwargs = self.presenter_mock.call_args
                 
                 assert call_kwargs is not None
                 # Check that start_dir is the parent directory
@@ -147,79 +147,78 @@ class TestMainLogic:
                 # Check that initial_selection_file is set
                 assert call_kwargs.kwargs['initial_selection_file'] == test_file
     
-    def test_invalid_csv_file_ignored(self, mock_is_llama_bench_csv, mock_tk,
-                                      mock_presenter, mock_main_window):
+    def test_invalid_csv_file_ignored(self):
         """When a file path is provided but not valid CSV, initial_file is None."""
         test_file = Path('/benchmarks/invalid.txt')
         
         # Mock CSV validation to return False
-        mock_is_llama_bench_csv.return_value = False
+        self.csv_parser_mock.return_value = False
         
         with patch('sys.argv', ['llamagraph.py', str(test_file)]):
             with patch.object(sys, 'exit'):
-                llamagraph.main()
+                self.llamagraph_module.main()
                 
-                call_kwargs = mock_presenter.call_args
+                call_kwargs = self.presenter_mock.call_args
                 
                 # start_dir is still parent
                 assert call_kwargs.kwargs['start_dir'] == test_file.parent
                 # But initial_selection_file should be None
                 assert call_kwargs.kwargs['initial_selection_file'] is None
     
-    def test_directory_path_logic(self, mock_tk, mock_presenter, mock_main_window):
+    def test_directory_path_logic(self):
         """When a directory path is provided, it's used as start_dir."""
         test_dir = Path('/benchmarks')
         
         with patch('sys.argv', ['llamagraph.py', str(test_dir)]):
             with patch.object(sys, 'exit'):
-                llamagraph.main()
+                self.llamagraph_module.main()
                 
-                call_kwargs = mock_presenter.call_args
+                call_kwargs = self.presenter_mock.call_args
                 
                 assert call_kwargs.kwargs['start_dir'] == test_dir
                 assert call_kwargs.kwargs['initial_selection_file'] is None
     
-    def test_nonexistent_path_exits(self, mock_tk):
+    def test_nonexistent_path_exits(self):
         """Non-existent path causes sys.exit(1)."""
         nonexistent = Path('/nonexistent/path')
         
         with patch('sys.argv', ['llamagraph.py', str(nonexistent)]):
             with patch.object(sys, 'exit') as mock_exit:
                 with pytest.raises(SystemExit) as exc_info:
-                    llamagraph.main()
+                    self.llamagraph_module.main()
                 
                 assert exc_info.value.code == 1
                 mock_exit.assert_called_once_with(1)
     
-    def test_default_path_is_current_dir(self, mock_tk, mock_presenter, mock_main_window):
+    def test_default_path_is_current_dir(self):
         """Default path (no arguments) uses current directory."""
         with patch('sys.argv', ['llamagraph.py']):
             with patch.object(sys, 'exit'):
-                llamagraph.main()
+                self.llamagraph_module.main()
                 
-                call_kwargs = mock_presenter.call_args
+                call_kwargs = self.presenter_mock.call_args
                 
                 # Should be current directory (absolute)
                 assert call_kwargs.kwargs['start_dir'] == Path('.').absolute()
     
-    def test_ns_flag_affects_default_ts(self, mock_tk, mock_presenter, mock_main_window):
+    def test_ns_flag_affects_default_ts(self):
         """--ns flag affects default_ts parameter to Presenter."""
         with patch('sys.argv', ['llamagraph.py', '--ns']):
             with patch.object(sys, 'exit'):
-                llamagraph.main()
+                self.llamagraph_module.main()
                 
-                call_kwargs = mock_presenter.call_args
+                call_kwargs = self.presenter_mock.call_args
                 
                 # --ns means show_ns=True, so default_ts should be False
                 assert call_kwargs.kwargs['default_ts'] is False
     
-    def test_no_ns_flag_means_default_ts_true(self, mock_tk, mock_presenter, mock_main_window):
+    def test_no_ns_flag_means_default_ts_true(self):
         """Without --ns flag, default_ts is True."""
         with patch('sys.argv', ['llamagraph.py']):
             with patch.object(sys, 'exit'):
-                llamagraph.main()
+                self.llamagraph_module.main()
                 
-                call_kwargs = mock_presenter.call_args
+                call_kwargs = self.presenter_mock.call_args
                 
                 assert call_kwargs.kwargs['default_ts'] is True
 
